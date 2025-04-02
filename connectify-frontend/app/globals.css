@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+body {
+  @apply h-screen bg-gray-200 text-gray-800 dark:bg-gray-950 dark:text-gray-50;
+}
