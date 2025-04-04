@@ -1,20 +1,107 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MdAttachFile, MdSend } from "react-icons/md";
+import useChatContext from "../context/ChatContext.js";
+import { useRouter } from "next/navigation";
+import SockJS from "sockjs-client";
+import { baseURL } from "../cofig/AxiosHelper.js";
+import { Stomp } from "@stomp/stompjs";
+import { loadMessagesApi } from "../services/RoomService.js";
+import toast from "react-hot-toast";
+import { timeAgo } from "../utils/helper.js";
 export default function Chat() {
-  const [messages, setMessages] = useState([
-    { content: "Hello", sender: "Kshitij" },
-    { content: "Hi", sender: "John" },
-    { content: "How are you?", sender: "Kshitij" },
-    { content: "I am fine", sender: "John" },
-    { content: "What about you?", sender: "John" },
-    { content: "I am fine too", sender: "Kshitij" },
-  ]);
+  const {
+    roomId,
+    currentUser,
+    connected,
+    setConnected,
+    setRoomId,
+    setCurrentUser,
+  } = useChatContext();
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const inputRef = useRef(null);
   const chatBoxRef = useRef(null);
   const [stompClient, setStompClient] = useState(null);
-  const [currentUser, setCurrentUser] = useState("Kshitij");
+  function handleLogout() {
+    // disconnect from the websocket server
+    stompClient.disconnect();
+    setConnected(false);
+    setRoomId("");
+    setCurrentUser("");
+    router.push("/");
+  }
+
+  const router = useRouter();
+
+  useEffect(() => {
+    async function loadMessages() {
+      try {
+        const messages = await loadMessagesApi(roomId);
+        setMessages(messages);
+        console.log("Messages loaded:", messages);
+      } catch (error) {
+        console.error("Error loading messages:", error);
+      }
+    }
+    loadMessages();
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!connected) router.push("/");
+  }, [roomId, currentUser, connected, router]);
+
+  useEffect(() => {
+    const connectWebSocket = () => {
+      // SockJs fallback
+      const sock = new SockJS(`${baseURL}/chat`);
+      const client = Stomp.over(sock);
+      client.connect({}, () => {
+        setStompClient(client);
+        toast.success("Connected to chat server");
+        client.subscribe(`/topic/room/${roomId}`, (message) => {
+          console.log("message", message);
+          const newMsg = JSON.parse(message.body);
+          console.log("newMsg", newMsg);
+          setMessages((prev) => [...prev, newMsg]);
+          setInput("");
+        });
+      });
+    };
+
+    if (connected) {
+      connectWebSocket();
+    }
+
+    // Stomp client
+  }, [connected, roomId]);
+
+  const sendMessage = async () => {
+    if (stompClient && connected && input.trim()) {
+      const message = {
+        content: input,
+        sender: currentUser,
+        roomId,
+      };
+      stompClient.send(
+        `/app/sendMessage/${roomId}`,
+        {},
+        JSON.stringify(message)
+      );
+      setInput("");
+    }
+  };
+
+  useEffect(() => {
+    if (chatBoxRef.current) {
+      chatBoxRef.current.scroll({
+        top: chatBoxRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
+
   return (
     <div className="">
       {/* this is a header */}
@@ -22,20 +109,20 @@ export default function Chat() {
         {/* room name container */}
         <div>
           <h1 className="text-xl font-semibold">
-            Room : <span>12345</span>
+            Room : <span>{roomId}</span>
           </h1>
         </div>
         {/* username container */}
 
         <div>
           <h1 className="text-xl font-semibold">
-            User : <span>Kshitij</span>
+            User : <span>{currentUser}</span>
           </h1>
         </div>
         {/* button: leave room */}
         <div>
           <button
-            // onClick={handleLogout}
+            onClick={handleLogout}
             className="dark:bg-red-500 dark:hover:bg-red-700 px-3 py-2 rounded-full"
           >
             Leave Room
@@ -43,8 +130,11 @@ export default function Chat() {
         </div>
       </header>
 
-      <main className="py-20 px-10   w-2/3 dark:bg-slate-600 mx-auto h-screen overflow-auto ">
-        {messages.map((message, index) => (
+      <main
+        ref={chatBoxRef}
+        className="py-20 px-10   w-2/3 dark:bg-slate-600 mx-auto h-screen overflow-auto "
+      >
+        {messages?.map((message, index) => (
           <div
             key={index}
             className={`flex ${
@@ -66,7 +156,7 @@ export default function Chat() {
                   <p className="text-sm font-bold">{message.sender}</p>
                   <p>{message.content}</p>
                   <p className="text-xs text-gray-400">
-                    {/* {timeAgo(message?.timeStamp)} */}
+                    {timeAgo(message?.timestamp)}
                   </p>
                 </div>
               </div>
@@ -97,7 +187,7 @@ export default function Chat() {
               <MdAttachFile size={20} />
             </button>
             <button
-              //   onClick={sendMessage}
+              onClick={sendMessage}
               className="dark:bg-green-600 h-10 w-10  flex   justify-center items-center rounded-full cursor-pointer"
             >
               <MdSend size={20} />

@@ -1,4 +1,4 @@
-import JoinCreateChat from "./components/JoinCreateChat.jsx";
+import JoinCreateChat from "./components/JoinCreateChat.js";
 
 export default function Home() {
   return (
