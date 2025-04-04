@@ -1,0 +1,7 @@
+Dockerfile
+.dockerignore
+target
+README.md
+*.md
+*.sh
+*.log
